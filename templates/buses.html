@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div>
+    <h2>Buses Inventory</h2>
+    <a href="{{ url_for('add_bus') }}">Add New Bus</a>
+    <ul>
+        {% for bus in buses %}
+        <li>
+            {{ bus.name }} - {{ bus.description }}
+            <a href="{{ url_for('edit_bus', bus_id=bus.id) }}">Edit</a>
+            <form action="{{ url_for('delete_bus', bus_id=bus.id) }}" method="POST" style="display:inline;">
+                <button type="submit">Delete</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}
