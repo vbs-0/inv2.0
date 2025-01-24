@@ -39,7 +39,13 @@ class Bus(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
-
+class Part(db.Model):
+    """Define the Part model."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)  # Ensure this line is present
+    quantity = db.Column(db.Integer, default=0)
+    low_stock_threshold = db.Column(db.Integer, default=10)  # If you have this field
 
 # Models
 class User(UserMixin, db.Model):
@@ -287,31 +293,20 @@ def products():
     return render_template('products.html', products=products, categories=categories)
 
 @app.route('/products/add', methods=['POST'])
-@supervisor_required
 def add_product():
-    """Add product route."""
-    name = request.form.get('name')
-    description = request.form.get('description')
-    quantity = int(request.form.get('quantity'))
-    price = float(request.form.get('price'))
-    category_id = int(request.form.get('category_id'))
-    low_stock_threshold = int(request.form.get('low_stock_threshold'))
-    
-    product = Product(
-        name=name,
-        description=description,
-        quantity=quantity,
-        price=price,
-        category_id=category_id,
-        low_stock_threshold=low_stock_threshold
-    )
-    
-    db.session.add(product)
-    db.session.commit()
-    
-    flash('Product added successfully')
-    log_user_activity(f'added product {product.name}')
-    return redirect(url_for('products'))
+    """Add product quantity route."""
+    product_id = request.form.get('product_id')  # Get the product ID
+    quantity_to_add = int(request.form.get('quantity'))  # Get the quantity to add
+
+    product = Product.query.get(product_id)  # Fetch the existing product
+    if product:
+        product.quantity += quantity_to_add  # Update the quantity
+        db.session.commit()  # Commit the changes
+        flash('Product quantity updated successfully')
+    else:
+        flash('Product not found', 'error')
+
+    return redirect(url_for('products'))  # Redirect back to the products page
 
 @app.route('/categories')
 @login_required
@@ -789,7 +784,47 @@ def delete_bus(bus_id):
     log_user_activity(f'deleted bus {bus.name}')
     return redirect(url_for('buses'))
 
+class BusPart(db.Model):
+    """Define the BusPart model to associate parts with buses."""
+    id = db.Column(db.Integer, primary_key=True)
+    bus_id = db.Column(db.Integer, db.ForeignKey('bus.id'), nullable=False)
+    part_id = db.Column(db.Integer, db.ForeignKey('part.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
 
+    bus = db.relationship('Bus', backref='bus_parts')
+    part = db.relationship('Part', backref='bus_parts')
+
+@app.route('/assign-parts', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def assign_parts():
+    """Assign parts to a bus."""
+    buses = Bus.query.all()
+    parts = Part.query.all()  # Assuming you have a Part model
+
+    if request.method == 'POST':
+        bus_id = request.form.get('bus_id')
+        part_id = request.form.get('part_id')
+        quantity = request.form.get('quantity')
+
+        # Check if the part has enough quantity available
+        part = Part.query.get(part_id)
+        if part.quantity < int(quantity):
+            flash('Insufficient quantity available for this part.', 'error')
+            return redirect(url_for('assign_parts'))
+
+        # Create a new BusPart entry
+        bus_part = BusPart(bus_id=bus_id, part_id=part_id, quantity=quantity)
+        db.session.add(bus_part)
+
+        # Update the part quantity
+        part.quantity -= int(quantity)
+
+        db.session.commit()
+        flash('Part assigned to bus successfully.')
+        return redirect(url_for('assign_parts'))
+
+    return render_template('assign_parts.html', buses=buses, parts=parts)
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
